@@ -5,10 +5,10 @@ import QtGraphicalEffects 1.0
 Image {
     id: root
     smooth: true
-    
+
     property alias color: colorOverlay.color
     property int size: 24  // default
-  
+
     sourceSize.width: size
     sourceSize.height: size
 

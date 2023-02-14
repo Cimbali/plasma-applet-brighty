@@ -15,6 +15,10 @@ X-KDE-PluginInfo-Website=https://github.com/Misaghlb/plasma-applet-brighty
 X-KDE-ServiceTypes=Plasma/Applet
 X-KDE-PluginInfo-Category=Graphics
 
+X-Plasma-RemoteLocation=
+
 X-Plasma-API=declarativeappletscript
 X-Plasma-MainScript=ui/main.qml
-X-Plasma-RemoteLocation=
+
+X-Plasma-NotificationArea=true
+X-Plasma-NotificationAreaCategory=SystemServices
