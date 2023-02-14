@@ -13,10 +13,10 @@ Item {
 
     property string buttonImagePath: Qt.resolvedUrl('../icons/sun-flat.svg')
 
-    IconSVG {
-        source: buttonImagePath
-        color: iconColor
-        anchors.centerIn: parent
+    PlasmaCore.IconItem {
+        source: "video-display-brightness"
+        width: parent.width
+        height: parent.height
     }
 
     MouseArea {
@@ -24,7 +24,7 @@ Item {
         anchors.fill: parent
         onClicked: {
             plasmoid.expanded = !plasmoid.expanded
-            brightyDS.connectedSources.push(kscreenConsoleCommand)
+            brightyDS.connectedSources.push(verboseXrandrCommand)
         }
 
         onWheel: {

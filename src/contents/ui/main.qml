@@ -24,8 +24,12 @@ Item {
 
     anchors.fill: parent
 
-    property string kscreenConsoleCommand: "kscreen-console outputs"
-    property string verboseXrandrCommand: "xrandr --verbose"
+    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled) !== -1
+        ? PlasmaCore.Types.ActiveStatus
+        : PlasmaCore.Types.PassiveStatus
+
+    readonly property string kscreenConsoleCommand: "kscreen-console outputs"
+    readonly property string verboseXrandrCommand: "xrandr --verbose"
 
     property ListModel outputs: ListModel {}
 
@@ -115,9 +119,11 @@ Item {
 
                 if (!isNested) {
                     screen[key] = parseValue(value[0])
-                } else if (isNested && nestKey === 'EDID Info') {
+                } else if (nestKey === 'EDID Info') {
                     // Only nested info we care about
                     screen[nestKey][key] = parseValue(value[0])
+                } else if (nestKey === null) {
+                    console.error(`Nested line not preceded by header in kscreen-console output: ${line.trimEnd()}`)
                 }
             }
 
@@ -149,32 +155,48 @@ Item {
 
         onNewData: {
             connectedSources.length = 0
-            // get list of monitors
             if (sourceName == kscreenConsoleCommand) {
-                for (const [name, outputName, controlled] of parseKScreenConsole(data.stdout)) {
+                // Get list of monitor names and whether we should control by default
+                for (const [name, outputName, controlledByDefault] of parseKScreenConsole(data.stdout)) {
                     const screen = listModelFindIndex(outputs, ({ name: xrandrName }) => xrandrName === name);
                     if (screen !== -1) {
+                        const { controlled = controlledByDefault } = outputs.get(screen);
                         outputs.set(screen, { outputName, controlled })
                     } else {
-                        outputs.append({ name, outputName, controlled, brightness: manualStartingBrightness })
+                        console.error(`Monitor ${name} in kscreen-console output but not in xrandr!`)
                     }
                 }
             }
             if (sourceName == verboseXrandrCommand) {
-                outputs.clear()
-                for (const [name, level] of Object.entries(parseVerboseXrandr(data.stdout))) {
+                const brightnessValues = parseVerboseXrandr(data.stdout);
+
+                // Update list of monitors: set brightness or remove if they are not in xrandr output anymore
+                for (let i = 0; i < outputs.count; ) {
+                    const { name } = outputs.get(i);
+                    if (name in brightnessValues) {
+                        outputs.set(i, { brightness: brightnessValues[name] })
+                        delete brightnessValues[name];
+                        ++i;
+                    } else {
+                        outputs.remove(i, 1)
+                    }
+                }
+
+                // Append new monitors to list
+                for (const [name, level] of Object.entries(brightnessValues)) {
                     outputs.append({ name, outputName: name, controlled: true, brightness: level })
                 }
+
                 // Now lookup fancy names
                 brightyDS.connectedSources.push(kscreenConsoleCommand)
             }
         }
     }
 
-    Plasmoid.toolTipMainText: i18n('HDMI Brightness Control')
-    Plasmoid.toolTipSubText: 'Control HDMI Monitor Brightness'
+    Plasmoid.toolTipMainText: i18n('External Monitor Brightness Control')
+    Plasmoid.toolTipSubText: i18n('Control External Monitor Brightness')
     Plasmoid.toolTipTextFormat: Text.RichText
-    Plasmoid.icon: 'im-jabber'
+    Plasmoid.icon: 'video-display-brightness'
 
     Component.onCompleted: {
         brightyDS.connectedSources.push(verboseXrandrCommand)

@@ -5,9 +5,6 @@ import QtQuick.Controls 1.3
 Item {
 	id: full
 
-	width: 15
-	height: 3
-
     ListView {
         id: multiSelectCheckList
         model: outputs
@@ -17,17 +14,27 @@ Item {
             margins: 10
         }
 
-        delegate: CheckBox {
-            id: modelCheckBoxes
-            checked: model.controlled
-            text: model.outputName
+		delegate: BrightnessItem {
+			id: brightnessSlider
 
-			onClicked: {
-				model.controlled = checked
+			width: parent.width
+
+			maximumValue: brightnessMax
+			minimumValue: brightnessMin
+			stepSize: brightnessMax / 100
+
+			text: model.outputName
+
+			value: model.brightness
+			onMoved: {
+				model.brightness = value
+				if (brightyDS.connectedSources.length === 0) {
+					brightyDS.connectedSources.push(`xrandr --output ${name} --brightness ${brightness.toFixed(2)}`)
+				}
 			}
 
-			width: 15
-			height: 30
-        }
-    }
+			controlled: model.controlled
+			onToggled: model.controlled = controlled
+		}
+	}
 }
