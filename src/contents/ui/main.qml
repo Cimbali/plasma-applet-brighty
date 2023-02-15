@@ -24,7 +24,7 @@ Item {
 
     anchors.fill: parent
 
-    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled) !== -1
+    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled !== 'NO') !== -1
         ? PlasmaCore.Types.ActiveStatus
         : PlasmaCore.Types.PassiveStatus
 
@@ -160,7 +160,10 @@ Item {
                 for (const [name, outputName, controlledByDefault] of parseKScreenConsole(data.stdout)) {
                     const screen = listModelFindIndex(outputs, ({ name: xrandrName }) => xrandrName === name);
                     if (screen !== -1) {
-                        const { controlled = controlledByDefault } = outputs.get(screen);
+                        let { controlled } = outputs.get(screen);
+                        if (controlled === 'MAYBE') {
+                            controlled = controlledByDefault ? 'YES' : 'NO'
+                        }
                         outputs.set(screen, { outputName, controlled })
                     } else {
                         console.error(`Monitor ${name} in kscreen-console output but not in xrandr!`)
@@ -184,7 +187,7 @@ Item {
 
                 // Append new monitors to list
                 for (const [name, level] of Object.entries(brightnessValues)) {
-                    outputs.append({ name, outputName: name, controlled: true, brightness: level })
+                    outputs.append({ name, outputName: name, brightness: level, controlled: 'MAYBE' })
                 }
 
                 // Now lookup fancy names
