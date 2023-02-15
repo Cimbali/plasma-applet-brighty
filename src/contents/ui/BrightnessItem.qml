@@ -5,7 +5,7 @@
     SPDX-License-Identifier: LGPL-2.0-or-later
 
 
-	Taken from the battery applet
+    Taken from the battery applet
 */
 
 import QtQuick 2.15
@@ -53,17 +53,14 @@ PlasmaComponents3.ItemDelegate {
                 PlasmaComponents3.CheckBox {
                     id: includeInScroll
                     Layout.alignment: Qt.AlignLeft
-					onClicked: root.toggled()
+                    onClicked: root.toggled()
 
-					PlasmaComponents3.ToolTip {
-						text: i18n("Modify display brightness by scrolling on icon")
-					}
-				}
-
-                PlasmaComponents3.Label {
-                    id: title
                     Layout.fillWidth: true
                     text: root.text
+
+                    PlasmaComponents3.ToolTip {
+                        text: i18n("Modify display brightness by scrolling on icon")
+                    }
                 }
 
                 PlasmaComponents3.Label {
