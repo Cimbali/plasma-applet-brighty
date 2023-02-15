@@ -1,17 +1,17 @@
 [Desktop Entry]
 Encoding=UTF-8
-Name=Brighty
-Comment=Control HDMI Monitor Brightness
-Icon=im-jabber
+Name=Brightness Control
+Icon=video-display-brightness
+Comment=Control the brightness of all your monitors conveniently from your notification area
 Type=Service
 
 X-KDE-ParentApp=
-X-KDE-PluginInfo-Author=Misagh Lotfi
-X-KDE-PluginInfo-Email=misaghlb@live.com
+X-KDE-PluginInfo-Author=Cimbali
+X-KDE-PluginInfo-Email=me@cimba.li
 X-KDE-PluginInfo-License=GPL3
-X-KDE-PluginInfo-Name=org.kde.brighty
-X-KDE-PluginInfo-Version=0.1
-X-KDE-PluginInfo-Website=https://github.com/Misaghlb/plasma-applet-brighty
+X-KDE-PluginInfo-Name=Brightness Control
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-Website=https://github.com/Cimbali/plasma-applet-brighty
 X-KDE-ServiceTypes=Plasma/Applet
 X-KDE-PluginInfo-Category=Graphics
 

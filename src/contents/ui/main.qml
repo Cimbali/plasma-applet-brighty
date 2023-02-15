@@ -59,8 +59,8 @@ Item {
         ? PlasmaCore.Types.ActiveStatus
         : PlasmaCore.Types.PassiveStatus
 
-    Plasmoid.toolTipMainText: i18n('External Monitor Brightness Control')
-    Plasmoid.toolTipSubText: i18n('Control External Monitor Brightness')
+    Plasmoid.toolTipMainText: i18n('Monitor Brightness')
+    Plasmoid.toolTipSubText: i18n('Control brightness of built-in and external monitors')
     Plasmoid.toolTipTextFormat: Text.RichText
     Plasmoid.icon: 'video-display-brightness'
 
