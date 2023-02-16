@@ -32,21 +32,19 @@ Item {
                 return
             }
 
-            const cmd = []
+            const cmd = {}
             const step = (wheel.angleDelta.y > 0) ? brightnessStep : -brightnessStep
 
             for (let i = 0; i < outputs.count; i++) {
                 const { name, controlled, brightness: oldBrightness } = outputs.get(i);
                 if (controlled) {
                     const brightness = clipBrightness(oldBrightness + step);
-                    cmd.push(`--output ${name} --brightness ${brightness.toFixed(2)}`)
+                    cmd[name] = brightness
                     outputs.set(i, { brightness })
                 }
             }
 
-            if (cmd.length) {
-                brightyDS.connectedSources.push(`xrandr ${cmd.join(' ')}`)
-            }
+            setBrightness(cmd)
         }
     }
 }

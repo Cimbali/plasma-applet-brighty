@@ -26,13 +26,17 @@ Item {
 
     anchors.fill: parent
 
-    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled) !== -1
-        ? PlasmaCore.Types.ActiveStatus
-        : PlasmaCore.Types.PassiveStatus
-
     readonly property string verboseXrandrCommand: "xrandr --verbose"
+    /* NB. order of find args is important: only print/quit if cat was successful */
+    readonly property string findBacklightDevices: "find /sys/class/backlight -mindepth 1 -maxdepth 1 -type l -exec cat {}/brightness {}/max_brightness ';' -print -quit"
+    readonly property string setBacklightOnDbus: "`which qdbus6 || which qdbus-qt5` --system org.freedesktop.login1 /org/freedesktop/login1/session/auto org.freedesktop.login1.Session.SetBrightness backlight"
 
     property ListModel outputs: ListModel {}
+    property var backlightScreen: Object({})
+
+    property double brightnessStep: plasmoid.configuration.stepBrightnessPercent / 100
+    property double brightnessMin: plasmoid.configuration.minBrightnessPercent / 100
+    property double brightnessMax: plasmoid.configuration.maxBrightnessPercent / 100
 
     function listModelFindIndex(listModel, pred) {
         for (let i = 0; i < listModel.count; i++) {
@@ -43,9 +47,63 @@ Item {
         return -1;
     }
 
+    function clipBrightness(val) {
+        if (val < brightnessMin) {
+            return brightnessMin
+        }
+        if (val > brightnessMax) {
+            return brightnessMax
+        }
+        return val
+    }
+
+    function cmdBacklightBrightness(value) {
+        const { device } = backlightScreen;
+        Object.assign(backlightScreen, { value })
+        return `${setBacklightOnDbus} ${device} ${value}`;
+    }
+
+    function setBrightness(levels) {
+        // No spamming
+        if (brightyDS.connectedSources.length !== 0) {
+            return
+        }
+
+        let cmd = ['xrandr'];
+
+        const { allowed, max, value, name: backlightName } = backlightScreen;
+        if (backlightName in levels) {
+            // Do the backlight screen all in HW or compensate
+            if (allowed) {
+                cmd.push(` && ${cmdBacklightBrightness(Math.round(levels[backlightName] * max))}`)
+                levels[backlightName] = 1.;
+            } else {
+                levels[backlightName] = clipBrightness(levels[backlightName] * max / value);
+            }
+        }
+
+        cmd.splice(1, 0, ...Object.entries(levels).map(
+            ([name, brightness]) => `--output ${name} --brightness ${brightness.toFixed(2)}`
+        ));
+
+        if (cmd.length > 1) {
+            brightyDS.connectedSources.push(cmd.join(' '))
+        }
+    }
+
     Plasmoid.preferredRepresentation: Plasmoid.compactRepresentation
     Plasmoid.compactRepresentation: CompactRepresentation { }
     Plasmoid.fullRepresentation: FullRepresentation {}
+
+    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled) !== -1
+        ? PlasmaCore.Types.ActiveStatus
+        : PlasmaCore.Types.PassiveStatus
+
+    Plasmoid.toolTipMainText: i18n('External Monitor Brightness Control')
+    Plasmoid.toolTipSubText: i18n('Control External Monitor Brightness')
+    Plasmoid.toolTipTextFormat: Text.RichText
+    Plasmoid.icon: 'video-display-brightness'
+
 
     PlasmaCore.DataSource {
         id: brightyDS
@@ -115,52 +173,79 @@ Item {
             return data
         }
 
+        function updateOutputs(parsedData) {
+            // Update list of monitors: set brightness or remove if they are not in xrandr output anymore
+            for (let i = 0; i < outputs.count; ) {
+                const { name } = outputs.get(i);
+                if (name in parsedData) {
+                    const { brightness } = parsedData[name];
+                    outputs.set(i, { brightness })
+                    delete parsedData[name];
+                    ++i;
+                    if (name === backlightScreen.name) {
+                        brightyDS.connectedSources.push(findBacklightDevices)
+                    }
+                } else {
+                    outputs.remove(i, 1)
+                }
+            }
+
+            // Append new monitors to list
+            for (const [name, screen] of Object.entries(parsedData)) {
+                outputs.append(Object.assign({ name, outputName: outputName(name, screen), controlled: true }, screen))
+                if (screen.isLaptopScreen && !('name' in backlightScreen)) {
+                    Object.assign(backlightScreen, { name })
+                    brightyDS.connectedSources.push(findBacklightDevices)
+                }
+            }
+        }
+
+        function updateBacklight({ current, max, device }) {
+            const { allowed, name } = backlightScreen;
+
+            // Try setting it to its current value to check permissions
+            if (!allowed) {
+                Object.assign(backlightScreen, { device, max });
+                brightyDS.connectedSources.push(cmdBacklightBrightness(current))
+            }
+
+            // Update xrandr brightness with backlight brightness info
+            const screen = listModelFindIndex(outputs, ({name: xrandrName}) => xrandrName === name);
+            let { brightness } = outputs.get(screen);
+            brightness *= current / max;
+            outputs.set(screen, { brightness })
+        }
+
         onNewData: {
             connectedSources.length = 0
             if (sourceName == verboseXrandrCommand) {
                 const parsedData = parseVerboseXrandr(data.stdout);
-
-                // Update list of monitors: set brightness or remove if they are not in xrandr output anymore
-                for (let i = 0; i < outputs.count; ) {
-                    const { name } = outputs.get(i);
-                    if (name in parsedData) {
-                        const { brightness } = parsedData[name];
-                        outputs.set(i, { brightness })
-                        delete parsedData[name];
-                        ++i;
-                    } else {
-                        outputs.remove(i, 1)
-                    }
+                updateOutputs(parsedData);
+            }
+            else if (sourceName == findBacklightDevices) {
+                try {
+                    let [current, max, device] = data.stdout.trim().split('\n').slice(-3);
+                    updateBacklight({
+                        device: device.slice(device.lastIndexOf('/') + 1),
+                        current: parseInt(current),
+                        max: parseInt(max),
+                    })
+                } catch (err) {
+                    console.error(`Error parsing results of backlight device search for built-in screen`, err)
                 }
+            }
+            else if (sourceName.startsWith(setBacklightOnDbus)) {
+                const allowed = data['exit code'] === 0;
+                Object.assign(backlightScreen, { allowed });
 
-                // Append new monitors to list
-                for (const [name, screen] of Object.entries(parsedData)) {
-                    outputs.append(Object.assign({ name, outputName: outputName(name, screen), controlled: !screen.isLaptopScreen }, screen))
+                if (!allowed) {
+                    console.warn(`Not allowed to set backlight hardware device brightness for built-in screen, only software filter`)
                 }
             }
         }
     }
 
-    Plasmoid.toolTipMainText: i18n('External Monitor Brightness Control')
-    Plasmoid.toolTipSubText: i18n('Control External Monitor Brightness')
-    Plasmoid.toolTipTextFormat: Text.RichText
-    Plasmoid.icon: 'video-display-brightness'
-
     Component.onCompleted: {
         brightyDS.connectedSources.push(verboseXrandrCommand)
-    }
-
-    property double brightnessStep: plasmoid.configuration.stepBrightnessPercent / 100
-    property double brightnessMin: plasmoid.configuration.minBrightnessPercent / 100
-    property double brightnessMax: plasmoid.configuration.maxBrightnessPercent / 100
-
-    function clipBrightness(val) {
-        if (val < brightnessMin) {
-            return brightnessMin
-        }
-        if (val > brightnessMax) {
-            return brightnessMax
-        }
-        return val
     }
 }

@@ -28,9 +28,7 @@ Item {
 			value: model.brightness
 			onMoved: {
 				model.brightness = value
-				if (brightyDS.connectedSources.length === 0) {
-					brightyDS.connectedSources.push(`xrandr --output ${name} --brightness ${brightness.toFixed(2)}`)
-				}
+				setBrightness({[name]: brightness})
 			}
 
 			controlled: model.controlled
