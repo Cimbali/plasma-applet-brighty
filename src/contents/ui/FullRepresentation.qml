@@ -33,8 +33,8 @@ Item {
 				}
 			}
 
-			controlled: model.controlled === 'YES'
-			onToggled: model.controlled = controlled ? 'YES' : 'NO'
+			controlled: model.controlled
+			onToggled: model.controlled = controlled
 		}
 	}
 }

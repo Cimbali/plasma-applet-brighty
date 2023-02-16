@@ -19,16 +19,17 @@ import QtQuick.Layouts 1.1
 import org.kde.plasma.plasmoid 2.0
 import org.kde.plasma.core 2.0 as PlasmaCore
 
+import "edid.js" as EDID
+
 Item {
     id: main
 
     anchors.fill: parent
 
-    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled !== 'NO') !== -1
+    Plasmoid.status: listModelFindIndex(outputs, ({ controlled }) => controlled) !== -1
         ? PlasmaCore.Types.ActiveStatus
         : PlasmaCore.Types.PassiveStatus
 
-    readonly property string kscreenConsoleCommand: "kscreen-console outputs"
     readonly property string verboseXrandrCommand: "xrandr --verbose"
 
     property ListModel outputs: ListModel {}
@@ -50,135 +51,82 @@ Item {
         id: brightyDS
         engine: 'executable'
 
-        function outputName({ Name: name, Type: screenType, 'EDID Info': edidInfo }) {
-            if (screenType === 'Panel (Laptop)') {
+        function outputName(name, { isLaptopScreen, edid }) {
+            if (isLaptopScreen) {
                 return i18nd('kscreen_common', 'Built-in Screen')
             }
-            if (edidInfo) {
-                const { Vendor: vendor, Name: model } = edidInfo;
-                const typeSuffix = screenType ?  (' (' + screenType + ')') : ''
-                if (vendor && model) {
-                    return vendor + ' ' + model + typeSuffix
-                } else if (vendor) {
-                    return vendor + typeSuffix
-                } else if (model) {
-                    return model + typeSuffix
+            if (edid) {
+                try {
+                    const { vendor, model } = EDID.parseHex(edid);
+                    const screenType = name.replace(/(-[0-9]+)*$/, '').replace(/^DP$/, 'DisplayPort');
+                    const typeSuffix = screenType ?  (' (' + screenType + ')') : '';
+                    if (vendor && model) {
+                        return vendor + ' ' + model + typeSuffix
+                    } else if (vendor) {
+                        return vendor + typeSuffix
+                    } else if (model) {
+                        return model + typeSuffix
+                    }
+                } catch (error) {
+                    console.error(`Error while parsing EDID for screen ${name}: ${error}`)
                 }
             }
             return name
         }
 
-        function parseValue(str) {
-            if (str.startsWith('"') && str.endsWith('"')) {
-                // A string literal
-                return str.slice(1, str.length - 1)
-            } else if (str === "true") {
-                return true;
-            } else if (str === "false") {
-                return false;
-            } else if (!isNaN(str)) {
-                return parseFloat(str)
-            } else {
-                // Usually an object
-                return str;
-            }
-        }
-
-        function parseKScreenConsole(output) {
-            const outputs = []
-            let screen = {}, nestKey = null;
-            for (const line of output.split('\n')) {
-                if (!line.trim()) {
-                    continue;
-                }
-                // Hit a separator
-                if (line === '-'.repeat(line.length)) {
-                    const { Name: name, Connected: connected, Type: screenType } = screen;
-                    if (name && connected) {
-                        outputs.push([name, outputName(screen), screenType !== 'Panel (Laptop)'])
-                    }
-                    screen = {}
-                    nestKey = null
-                    continue
-                }
-
-                let [key, ...value] = line.split(':', 2).map(token => token.trim())
-                const isNested = line.startsWith('\t')
-
-                if (key === 'Modes' || key === 'Screen' || key === 'EDID Info') {
-                    nestKey = key
-                    screen[key] = {}
-                    continue
-                }
-                if (!isNested) {
-                    nestKey = null
-                }
-                if (!value.length) {
-                    continue
-                }
-
-                if (!isNested) {
-                    screen[key] = parseValue(value[0])
-                } else if (nestKey === 'EDID Info') {
-                    // Only nested info we care about
-                    screen[nestKey][key] = parseValue(value[0])
-                } else if (nestKey === null) {
-                    console.error(`Nested line not preceded by header in kscreen-console output: ${line.trimEnd()}`)
-                }
-            }
-
-            return outputs;
-        }
-
         function parseVerboseXrandr(output) {
-            const brightness = {}
-            let name, isConnected = false;
+            const data = {}
+            let name, isConnected = false, readingEdid = false;
             for (const line of output.split('\n')) {
+                // Continuing EDID
+                if (readingEdid) {
+                    if (line.startsWith('\t\t')) {
+                        data[name]['edid'] += line.slice(2);
+                        continue;
+                    } else {
+                        readingEdid = false;
+                    }
+                }
                 // New screen start
                 if (!line.startsWith(' ') && !line.startsWith('\t')) {
                     [name, isConnected] = line.split(' ', 3)
                     isConnected = (isConnected === 'connected')
+                    readingEdid = false;
                     if (isConnected) {
-                        brightness[name] = 1.;
+                        data[name] = {
+                            brightness: 1.,
+                            // libkscreen logic to identify embedded screens
+                            isLaptopScreen: name.match(/^(LVDS|IDP|EDP|LCD|DSI)/i) !== null
+                        };
                     }
                 }
                 // After a connected screen start, search for brightness value
                 else if (isConnected) {
                     const [key, ...value] = line.split(':', 2)
                     if (key.trim() === 'Brightness') {
-                        brightness[name] = parseFloat(value[0].trim())
+                        data[name]['brightness'] = parseFloat(value[0].trim())
+                    }
+                    else if (key.trim() === 'EDID') {
+                        data[name]['edid'] = '';
+                        readingEdid = true;
                     }
                 }
             }
-            return brightness
+            return data
         }
 
         onNewData: {
             connectedSources.length = 0
-            if (sourceName == kscreenConsoleCommand) {
-                // Get list of monitor names and whether we should control by default
-                for (const [name, outputName, controlledByDefault] of parseKScreenConsole(data.stdout)) {
-                    const screen = listModelFindIndex(outputs, ({ name: xrandrName }) => xrandrName === name);
-                    if (screen !== -1) {
-                        let { controlled } = outputs.get(screen);
-                        if (controlled === 'MAYBE') {
-                            controlled = controlledByDefault ? 'YES' : 'NO'
-                        }
-                        outputs.set(screen, { outputName, controlled })
-                    } else {
-                        console.error(`Monitor ${name} in kscreen-console output but not in xrandr!`)
-                    }
-                }
-            }
             if (sourceName == verboseXrandrCommand) {
-                const brightnessValues = parseVerboseXrandr(data.stdout);
+                const parsedData = parseVerboseXrandr(data.stdout);
 
                 // Update list of monitors: set brightness or remove if they are not in xrandr output anymore
                 for (let i = 0; i < outputs.count; ) {
                     const { name } = outputs.get(i);
-                    if (name in brightnessValues) {
-                        outputs.set(i, { brightness: brightnessValues[name] })
-                        delete brightnessValues[name];
+                    if (name in parsedData) {
+                        const { brightness } = parsedData[name];
+                        outputs.set(i, { brightness })
+                        delete parsedData[name];
                         ++i;
                     } else {
                         outputs.remove(i, 1)
@@ -186,12 +134,9 @@ Item {
                 }
 
                 // Append new monitors to list
-                for (const [name, level] of Object.entries(brightnessValues)) {
-                    outputs.append({ name, outputName: name, brightness: level, controlled: 'MAYBE' })
+                for (const [name, screen] of Object.entries(parsedData)) {
+                    outputs.append(Object.assign({ name, outputName: outputName(name, screen), controlled: !screen.isLaptopScreen }, screen))
                 }
-
-                // Now lookup fancy names
-                brightyDS.connectedSources.push(kscreenConsoleCommand)
             }
         }
     }

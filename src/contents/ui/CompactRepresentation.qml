@@ -37,7 +37,7 @@ Item {
 
             for (let i = 0; i < outputs.count; i++) {
                 const { name, controlled, brightness: oldBrightness } = outputs.get(i);
-                if (controlled !== 'NO') {
+                if (controlled) {
                     const brightness = clipBrightness(oldBrightness + step);
                     cmd.push(`--output ${name} --brightness ${brightness.toFixed(2)}`)
                     outputs.set(i, { brightness })
