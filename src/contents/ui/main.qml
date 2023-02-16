@@ -69,25 +69,25 @@ Item {
             return
         }
 
-        let cmd = ['xrandr'];
+        let cmd = [];
 
         const { allowed, max, value, name: backlightName } = backlightScreen;
         if (backlightName in levels) {
             // Do the backlight screen all in HW or compensate
             if (allowed) {
-                cmd.push(` && ${cmdBacklightBrightness(Math.round(levels[backlightName] * max))}`)
+                cmd.push(cmdBacklightBrightness(Math.round(levels[backlightName] * max)))
                 levels[backlightName] = 1.;
             } else {
                 levels[backlightName] = clipBrightness(levels[backlightName] * max / value);
             }
         }
 
-        cmd.splice(1, 0, ...Object.entries(levels).map(
-            ([name, brightness]) => `--output ${name} --brightness ${brightness.toFixed(2)}`
+        cmd.push(...Object.entries(levels).map(
+            ([name, brightness]) => `xrandr --output ${name} --brightness ${brightness.toFixed(2)}`
         ));
 
         if (cmd.length > 1) {
-            brightyDS.connectedSources.push(cmd.join(' '))
+            brightyDS.connectedSources.push(cmd.join(' ; '))
         }
     }
 
