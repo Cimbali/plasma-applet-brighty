@@ -24,11 +24,11 @@ Item {
         anchors.fill: parent
         onClicked: {
             plasmoid.expanded = !plasmoid.expanded
-            brightyDS.connectedSources.push(verboseXrandrCommand)
+            xrandr.refresh()
         }
 
         onWheel: {
-            if (brightyDS.connectedSources.length > 0) {
+            if (xrandr.stillUpdating()) {
                 return
             }
 
@@ -44,7 +44,7 @@ Item {
                 }
             }
 
-            setBrightness(cmd)
+            xrandr.setBrightness(cmd)
         }
     }
 }

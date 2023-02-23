@@ -28,7 +28,7 @@ Item {
 			value: model.brightness
 			onMoved: {
 				model.brightness = value
-				setBrightness({[name]: brightness})
+				xrandr.setBrightness({[name]: brightness})
 			}
 
 			controlled: model.controlled

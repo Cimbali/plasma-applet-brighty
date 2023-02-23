@@ -26,8 +26,6 @@ Item {
 
     anchors.fill: parent
 
-    readonly property string verboseXrandrCommand: "xrandr --verbose"
-
     property ListModel outputs: ListModel {}
 
     property double brightnessStep: plasmoid.configuration.stepBrightnessPercent / 100
@@ -53,28 +51,6 @@ Item {
         return val
     }
 
-    function setBrightness(levels) {
-        // No spamming
-        if (brightyDS.connectedSources.length > 1) {
-            return
-        }
-
-        let cmd = [];
-
-        if (pmSource.screenName in levels) {
-            // Do the backlight screen all in HW or compensate
-            levels[pmSource.screenName] = pmSource.setBacklight(levels[pmSource.screenName]);
-        }
-
-        cmd.push(...Object.entries(levels).map(
-            ([name, brightness]) => `xrandr --output ${name} --brightness ${brightness.toFixed(2)}`
-        ));
-
-        if (cmd.length > 1) {
-            brightyDS.connectedSources.push(cmd.join(' ; '))
-        }
-    }
-
     Plasmoid.preferredRepresentation: Plasmoid.compactRepresentation
     Plasmoid.compactRepresentation: CompactRepresentation { }
     Plasmoid.fullRepresentation: FullRepresentation {}
@@ -90,8 +66,10 @@ Item {
 
 
     PlasmaCore.DataSource {
-        id: brightyDS
+        id: xrandr
         engine: 'executable'
+
+        readonly property string verboseXrandrCommand: "xrandr --verbose"
 
         function outputName(name, { isLaptopScreen, edid }) {
             if (isLaptopScreen) {
@@ -186,11 +164,39 @@ Item {
             }
         }
 
+        function refresh() {
+            connectedSources.push(verboseXrandrCommand)
+        }
+
         onNewData: {
             connectedSources.length = 0
             if (sourceName == verboseXrandrCommand) {
                 const parsedData = parseVerboseXrandr(data.stdout);
                 updateOutputs(parsedData);
+            }
+        }
+
+        function stillUpdating() {
+            return connectedSources.indexOf(/^xrandr --output/) !== -1;
+        }
+
+        function setBrightness(levels) {
+            // No spamming
+            if (stillUpdating()) {
+                return
+            }
+
+            if (pmSource.screenName in levels) {
+                // Do the backlight screen all in HW or compensate
+                levels[pmSource.screenName] = pmSource.setBacklight(levels[pmSource.screenName]);
+            }
+
+            const cmd = Object.entries(levels).map(
+                ([name, brightness]) => `--output ${name} --brightness ${brightness.toFixed(2)}`
+            );
+
+            if (cmd.length) {
+                connectedSources.push(`xrandr ${cmd.join(' ')}`)
             }
         }
     }
@@ -221,7 +227,7 @@ Item {
 
         onDataChanged: {
             if (triggerRefresh) {
-                brightyDS.connectedSources.push(verboseXrandrCommand)
+                xrandr.refresh()
             }
         }
 
@@ -285,7 +291,37 @@ Item {
         }
     }
 
+    Timer {
+        id: delayedStartWatching
+        interval: 200
+        onTriggered: {
+            dbusWatcher.start()
+        }
+    }
+
+    PlasmaCore.DataSource {
+        id: dbusWatcher
+        engine: 'executable'
+        readonly property var dbusWatchExpressions: [
+            "type='signal',sender='org.kde.KScreen',path='/backend',interface='org.kde.kscreen.Backend',member='configChanged'",
+            "type='signal',sender='org.kde.KScreen',path='/modules/kscreen',interface='org.kde.KScreen',member='outputConnected'",
+        ]
+        readonly property string sedStopAtFirstMessage:  '/interface=org.freedesktop.DBus; member=Name(Lost|Acquired)>/,+1d;q'
+
+        function start() {
+            connectedSources.push(`dbus-monitor ${dbusWatchExpressions.join(' ')} | stdbuf -i0 sed -r '${sedStopAtFirstMessage}'`)
+        }
+
+        onNewData: {
+            connectedSources.length = 0;
+            xrandr.refresh();
+            // Need this delay to avoid call stack overflow
+            delayedStartWatching.start()
+        }
+    }
+
     Component.onCompleted: {
-        brightyDS.connectedSources.push(verboseXrandrCommand)
+        xrandr.refresh()
+        dbusWatcher.start()
     }
 }
