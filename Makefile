@@ -6,14 +6,14 @@ GETMETA := kreadconfig5 --file=${PWD}${SRCDIR}/metadata.desktop --group="Desktop
 PLASMOID_NAME := $(shell ${GETMETA} --key="X-KDE-PluginInfo-Name" | sed s/^org\.kde\.//)
 PLASMOID_VERS := $(shell ${GETMETA} --key="X-KDE-PluginInfo-Version")
 
+test:
+	@env QML_DISABLE_DISK_CACHE=true plasmoidviewer -a ${SRCDIR}
+
 build: ${PLASMOID_NAME}-v${PLASMOID_VERS}.plasmoid
 	@sha256sum $<
 
 %.plasmoid:
 	@cd ${SRCDIR} && zip -qr "../$@" *
-
-test:
-	@env QML_DISABLE_DISK_CACHE=true plasmoidviewer -a ${SRCDIR}
 
 install:
 	${PACKAGE} -i ${SRCDIR}
